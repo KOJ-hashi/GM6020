@@ -79,15 +79,14 @@ void gm6020::rbms_read(CANMessage &msg, short *rotation, short *speed) {
             _temperature = msg.data[6];
 }
 
-void gm6020::can_read() {
-    // while(true) を消して、if文にする
-    if(_can.read(_msg)) {
-        // IDが0x201〜0x208（モーターからの返信ID）なら解析する
-        if(_msg.id >= 0x201 && _msg.id <= 0x208) {
-            short r, s;
-            rbms_read(_msg, &r, &s); // ここで now_pos が更新される
-        }
+bool gm6020::handle_message(const CANMessage &msg) {
+    // IDが0x201〜0x208（モーターからの返信ID）なら解析する
+    if(msg.id >= 0x201 && msg.id <= 0x208) {
+        short r, s;
+        rbms_read(const_cast<CANMessage&>(msg), &r, &s); 
+        return true; // 処理したのでtrueを返す
     }
+    return false; // 自分に関係ないIDならfalseを返す
 }
 
 float gm6020::pid(float T,short deg_now, short set_deg,float *delta_deg_pre,float *ie,float KP, float KI,float KD )//pid制御
