@@ -2,6 +2,7 @@
 #define INCLUDED_gm6020_H
 
 #include "mbed.h"
+#include "CANManager.h"
 #include <vector>
 
 enum ControlMode {
@@ -10,13 +11,14 @@ enum ControlMode {
     TRACON
 };
 
-class gm6020 {
+class gm6020 : public CANReceiver {
     public:
         CANMessage gm6020_can_msg;
         gm6020(RawCAN &can,int motor_num);
         int gm6020_send(int* moter);
         void rbms_read(CANMessage &msg, short *rotation,short *speed);
-        void can_read();
+        bool handle_message(const CANMessage &msg) override;
+        void can_read(){}
         const vector<int>& getSumDeg() const { return _sum_deg; }
         float pid(float T,short rpm_now, short set_speed,float *delta_rpm_pre,float *ie,float KP=150,float KI=70, float KD=0);
         void deg_control(float* set_deg,int* motor,float* KP_GM6020,float* KI_GM6020,float* KD_GM6020);
