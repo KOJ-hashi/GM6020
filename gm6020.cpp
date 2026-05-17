@@ -3,6 +3,7 @@
 #include <chrono>
 using namespace std::chrono;
 #define DIGIT pow(10,2)//小数点表示用
+
 gm6020::gm6020(RawCAN &can,int motor_num): _can(can),_motor_num(motor_num){
     _motor_max=25000;//電圧
     if(_motor_num<=8){
@@ -79,15 +80,14 @@ void gm6020::rbms_read(CANMessage &msg, short *rotation, short *speed) {
             _temperature = msg.data[6];
 }
 
-void gm6020::can_read() {
-    // while(true) を消して、if文にする
-    if(_can.read(_msg)) {
-        // IDが0x201〜0x208（モーターからの返信ID）なら解析する
-        if(_msg.id >= 0x201 && _msg.id <= 0x208) {
-            short r, s;
-            rbms_read(_msg, &r, &s); // ここで now_pos が更新される
-        }
+bool gm6020::handle_message(const CANMessage &msg) {
+    // IDが0x201〜0x208（モーターからの返信ID）なら解析する
+    if(msg.id >= 0x201 && msg.id <= 0x208) {
+        short r, s;
+        rbms_read(const_cast<CANMessage&>(msg), &r, &s); 
+        return true; // 処理したのでtrueを返す
     }
+    return false; // 自分に関係ないIDならfalseを返す
 }
 
 float gm6020::pid(float T,short deg_now, short set_deg,float *delta_deg_pre,float *ie,float KP, float KI,float KD )//pid制御
@@ -134,30 +134,35 @@ void gm6020::deg_control(float* set_rad,int* motor,float* KP_GM6020,float* KI_GM
 
 
 void gm6020::pos_control(float *set_deg, int *output, float Kp, float Ki, float Kd) {
-    // 1. 度数法(0~360)を 生データ(0~8191)に変換
-    // 8192 / 360 = 約22.75
-    int target_raw = (int)(set_deg[0] * 8192.0f / 360.0f);
 
-    // 2. 現在の角度を取得 (0 ~ 8191)
+    float raw_val = set_deg[0] * 8192.0f / 360.0f;
+    int target_raw = (int)raw_val;
+
+
+    while (target_raw < 0)     target_raw += 8192;
+    while (target_raw >= 8192) target_raw -= 8192;
+
+
     int current_pos = now_pos; 
     
-    // 3. 偏差を計算
+
     int error = target_raw - current_pos;
 
-    // 4. 最短距離計算 (1回転8192の半分4096で判定)
-    if (error > 4096) error -= 8192;
+    if (error > 4096)  error -= 8192;
     else if (error < -4096) error += 8192;
 
-    // 5. PID計算
     static float integral = 0;
     static int prev_error = 0;
+
+    if (abs(error) > 1) {
+        integral += error;
+    } else {
+        integral = 0;
+    }
     
-    integral += error;
     float derivative = error - prev_error;
     
     float out = (error * Kp) + (integral * Ki) + (derivative * Kd);
-    
-    // 出力リミッター
     if (out > 25000) out = 25000;
     if (out < -25000) out = -25000;
     
